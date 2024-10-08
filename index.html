@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handwriting Recognition System</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, hsl(36, 74%, 64%), #e7a77c);
+        }
+        .board {
+            border: 4px solid #3b82f6; /* Blue border */
+            border-radius: 8px;
+            background: rgb(111, 218, 116);
+            position: relative;
+            margin: 10px;
+            overflow: hidden;
+        }
+        canvas {
+            width: 100%; /* Make canvas responsive */
+            height: 400px; /* Set a fixed height */
+            border-radius: 8px; /* Match border radius */
+        }
+        .loader {
+            display: none;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #ffffff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .tool-button {
+            cursor: pointer;
+            padding: 8px;
+            margin: 2px;
+            border-radius: 5px;
+            background: #e5e7eb;
+            transition: background 0.3s;
+            font-size: 0.875rem; /* Smaller font size */
+            width:100px;
+            display: inline-block;
+        }
+        .tool-button:hover {
+            background: #d1d5db;
+        }
+        .active-tool {
+            background: #3b82f6;
+            color: white;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .icon {
+            width: 18px;
+            height: 18px;
+        }
+        .control-label {
+            font-size: 0.875rem; /* Smaller label size */
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+    <div class="bg-white p-4 rounded-lg shadow-md flex flex-col">
+        <h1 class="text-2xl font-bold text-center mb-2">Handwriting Recognition System BY Infinitox World</h1>
+        <div class="board">
+            <canvas id="drawingBoard"></canvas>
+        </div>
+        <div class="flex mb-2">
+            <button id="extractButton" class="bg-blue-500 text-white p-2 rounded w-full hover:bg-blue-600 transition duration-200">Extract</button>
+            <button id="downloadButton" class="bg-gray-500 text-white p-2 rounded ml-1 hover:bg-gray-600 transition duration-200">Download</button>
+            <button id="resetButton" class="bg-red-500 text-white p-2 rounded ml-1 hover:bg-red-600 transition duration-200">Reset</button>
+            <button id="undoButton" class="bg-yellow-500 text-white p-2 rounded ml-1 hover:bg-yellow-600 transition duration-200">
+                <img src="https://img.icons8.com/material-outlined/20/000000/undo.png" alt="Undo" class="icon" />
+            </button>
+            <button id="traceButton" class="bg-purple-500 text-white p-2 rounded ml-1 hover:bg-purple-600 transition duration-200">
+                <img src="https://img.icons8.com/material-outlined/20/000000/visible.png" alt="Trace" class="icon" />
+            </button>
+        </div>
+        <input type="file" id="uploadInput" accept="image/*" />
+        <label for="uploadInput" class="bg-green-500 text-white p-2 rounded w-full text-center cursor-pointer hover:bg-green-600 transition duration-200">Upload Image</label>
+        <div id="loader" class="loader mx-auto mt-2"></div>
+        <div id="result" class="mt-2 text-center hidden">
+            <p id="extractedText" class="text-lg font-semibold"></p>
+            <button id="copyButton" class="bg-green-500 text-white p-2 rounded mt-2 w-full hover:bg-green-600 transition duration-200">Copy</button>
+        </div>
+        <div class="mt-2 text-sm text-gray-600">
+            
+        </div>
+        <div class="flex flex-col ml-1">
+            <h2 class="control-label font-bold mb-1 mt-2">Select Tool</h2>
+            <div id="tools">
+                <div id="pencil" class="tool-button">✏️ Pencil</div>
+                <div id="brush" class="tool-button active-tool">🖌️ Brush</div>
+                <div id="spray" class="tool-button">🌫️ Spray</div>
+            </div>
+            <h2 class="control-label font-bold mb-1 mt-2">Select Color</h2>
+            <input type="color" id="colorPicker" value="#000000" class="border rounded p-1 mb-2" />
+            <h2 class="control-label font-bold mb-1 mt-2">Select Width</h2>
+            <input type="range" id="widthSelector" min="1" max="10" value="2" class="w-full" />
+            <span id="widthValue" class="text-sm text-gray-600">Width: 2</span>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drawingBoard');
+        const ctx = canvas.getContext('2d');
+        let drawing = false;
+        let currentTool = 'brush'; // Default tool
+        let currentColor = '#000000'; // Default color
+        let lineWidth = 2; // Default line width
+        let drawingHistory = []; // History for undo functionality
+        let isTracing = false; // Flag for tracing mode
+
+        // Set canvas size to match its CSS size
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+
+        // Event listeners for drawing on the canvas
+        canvas.addEventListener('mousedown', () => { drawing = true; });
+        canvas.addEventListener('mouseup', () => { drawing = false; ctx.beginPath(); });
+        canvas.addEventListener('mousemove', draw);
+
+        function draw(event) {
+            if (!drawing) return;
+
+            ctx.lineWidth = lineWidth; // Use selected width
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = currentColor; // Set color from the color picker
+
+            if (currentTool === 'spray') {
+                // Simple spray effect
+                for (let i = 0; i < 20; i++) {
+                    const offsetX = (Math.random() - 0.5) * 10;
+                    const offsetY = (Math.random() - 0.5) * 10;
+                    ctx.fillStyle = currentColor;
+                    ctx.beginPath();
+                    ctx.arc(event.offsetX + offsetX, event.offsetY + offsetY, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            } else {
+                ctx.lineTo(event.offsetX, event.offsetY); // Use offsetX and offsetY
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(event.offsetX, event.offsetY);
+            }
+
+            // Save the drawing state for undo functionality
+            drawingHistory.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        }
+
+        // Tool selection
+        document.querySelectorAll('.tool-button').forEach(button => {
+            button.addEventListener('click', () => {
+                currentTool = button.id; // Set current tool
+                document.querySelectorAll('.tool-button').forEach(btn => {
+                    btn.classList.remove('active-tool'); // Remove active class from all
+                });
+                button.classList.add('active-tool'); // Add active class to the selected tool
+            });
+        });
+
+        // Color selection
+        const colorPicker = document.getElementById('colorPicker');
+        colorPicker.addEventListener('input', (event) => {
+            currentColor = event.target.value; // Update current color
+        });
+
+        // Width selection
+        const widthSelector = document.getElementById('widthSelector');
+        const widthValue = document.getElementById('widthValue');
+        widthSelector.addEventListener('input', (event) => {
+            lineWidth = event.target.value; // Update line width
+            widthValue.textContent = `Width: ${lineWidth}`;
+        });
+
+        const extractButton = document.getElementById('extractButton');
+        const loader = document.getElementById('loader');
+        const resultDiv = document.getElementById('result');
+        const extractedText = document.getElementById('extractedText');
+        const copyButton = document.getElementById('copyButton');
+        const resetButton = document.getElementById('resetButton');
+        const downloadButton = document.getElementById('downloadButton');
+        const uploadInput = document.getElementById('uploadInput');
+        const undoButton = document.getElementById('undoButton');
+        const traceButton = document.getElementById('traceButton');
+
+        extractButton.addEventListener('click', () => {
+            loader.style.display = 'block';
+            resultDiv.classList.add('hidden');
+            extractedText.textContent = '';
+
+            // Simulate text extraction from the canvas
+            setTimeout(() => {
+                // Placeholder for extracted text from canvas
+                const recognizedText = "Sample Recognized Text"; // Replace with actual recognition logic
+                
+                extractedText.textContent = recognizedText;
+                loader.style.display = 'none';
+                resultDiv.classList.remove('hidden');
+            }, 2000); // Simulating a 2-second process
+        });
+
+        copyButton.addEventListener('click', () => {
+            navigator.clipboard.writeText(extractedText.textContent).then(() => {
+                alert('Text copied to clipboard!');
+            });
+        });
+
+        resetButton.addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+            extractedText.textContent = '';
+            resultDiv.classList.add('hidden');
+            drawingHistory = []; // Clear history
+        });
+
+        // Handle image upload
+        uploadInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas before drawing the image
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height); // Draw the uploaded image
+                };
+                img.src = e.target.result; // Set image source
+            };
+            reader.readAsDataURL(file); // Read the uploaded file
+        });
+
+        // Download functionality
+        downloadButton.addEventListener('click', () => {
+            // Download canvas as image
+            const image = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = image;
+            link.download = 'drawing.png';
+            link.click();
+
+            // Download recognized text as a .txt file
+            const text = extractedText.textContent || "No text extracted";
+            const blob = new Blob([text], { type: 'text/plain' });
+            const textLink = document.createElement('a');
+            textLink.href = URL.createObjectURL(blob);
+            textLink.download = 'recognized_text.txt';
+            textLink.click();
+        });
+
+        // Undo functionality
+        undoButton.addEventListener('click', () => {
+            if (drawingHistory.length > 1) {
+                drawingHistory.pop(); // Remove the current state
+                const lastDrawing = drawingHistory[drawingHistory.length - 1];
+                ctx.putImageData(lastDrawing, 0, 0); // Restore the last drawing
+            }
+        });
+
+        // Trace functionality
+        traceButton.addEventListener('click', () => {
+            isTracing = !isTracing; // Toggle tracing mode
+            traceButton.classList.toggle('bg-purple-600');
+            traceButton.classList.toggle('bg-purple-500');
+            traceButton.classList.toggle('text-white');
+        });
+    </script>
+</body>
+</html>
